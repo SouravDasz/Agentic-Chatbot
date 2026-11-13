@@ -8,6 +8,7 @@ from app.schemas.auth_request import RegisterRequest,LoginRequest
 from app.database import get_db
 from app.models.user import User
 from app.core.security import hash_password,verify_password
+from app.core.security import create_access_token
 
 
 router=APIRouter(
@@ -82,6 +83,36 @@ def register(user_data:RegisterRequest,db:Session=Depends(get_db)):
         "email": new_user.email
     }
 
-@router.post("/login")
-def login():
-    pass
+@router.post("/login",status_code=status.HTTP_200_OK)
+def login(user_data:LoginRequest,db:Session=Depends(get_db)):
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_204_NO_CONTENT,
+            detail="please enter following details"
+        )
+    #check user esixt or not
+    query=select(User).where(User.email==user_data.email)
+    existing_user = db.execute(query).scalar_one_or_none()
+    if not existing_user:
+        raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password"
+    )
+    #match passwrod
+    is_valid=verify_password(user_data.password,existing_user.hashed_password)
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+    access_token = create_access_token(
+        user_id=str(existing_user.id)
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
+    
