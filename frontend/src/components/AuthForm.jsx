@@ -6,6 +6,7 @@ function AuthForm({
   showPassword,
   showConfirmPassword,
   submitted,
+  registrationSuccess,
   loading,
   error,
   onModeChange,
@@ -89,7 +90,8 @@ function AuthForm({
             {!loading && <span aria-hidden="true">→</span>}
           </button>
           {error && <p className="my-[11px] text-center text-xs text-[#b94b42]" role="alert">{error}</p>}
-          {submitted && <p className="my-[11px] text-center text-xs text-[#39836b]" role="status">{isRegister ? 'Your account is ready to go.' : 'You’re signed in. Welcome back.'}</p>}
+          {registrationSuccess && <p className="my-[11px] text-center text-xs text-[#39836b]" role="status">Your account is ready. Please sign in.</p>}
+          {submitted && !registrationSuccess && <p className="my-[11px] text-center text-xs text-[#39836b]" role="status">You’re signed in. Welcome back.</p>}
         </form>
 
         <div className="my-[25px] flex items-center gap-[11px] text-[10px] text-[#adb7b3] before:h-px before:flex-1 before:bg-[#e6eae7] after:h-px after:flex-1 after:bg-[#e6eae7]"><span>or continue with</span></div>

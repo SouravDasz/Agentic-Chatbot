@@ -17,31 +17,6 @@ router=APIRouter(
     )
 
 
-@router.post("/login")
-def login():
-    pass
-
-
-from fastapi import APIRouter,Depends,HTTPException,status
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-
-
-from app.schemas.auth_request import RegisterRequest,LoginRequest
-from app.database import get_db
-from app.models.user import User
-from app.core.security import hash_password,verify_password
-
-
-router=APIRouter(
-    prefix="/auth",
-    tags=["Authentication"]
-    )
-
-
-
-
 @router.post("/register",status_code=status.HTTP_201_CREATED)
 def register(user_data:RegisterRequest,db:Session=Depends(get_db)):
 
@@ -112,7 +87,8 @@ def login(user_data:LoginRequest,db:Session=Depends(get_db)):
 
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "name": existing_user.name
     }
 
     

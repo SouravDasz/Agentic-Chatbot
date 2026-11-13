@@ -5,3 +5,44 @@
   --font-dm: 'DM Sans', Arial, sans-serif;
   --font-space: 'Space Grotesk', sans-serif;
 }
+
+.chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #55736a transparent;
+}
+
+.chat-scrollbar::-webkit-scrollbar {
+  width: 7px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: #55736a;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #e6914f;
+}
+
+.chat-scrollbar-light {
+  scrollbar-color: #b7c8c0 #f1f3f0;
+}
+
+.chat-scrollbar-light::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: #f1f3f0;
+}
+
+.chat-scrollbar-light::-webkit-scrollbar-thumb {
+  background-color: #b7c8c0;
+}
+
+.chat-scrollbar-light::-webkit-scrollbar-thumb:hover {
+  background-color: #e6914f;
+}

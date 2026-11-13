@@ -11,6 +11,7 @@ function App() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [registrationSuccess, setRegistrationSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -20,9 +21,19 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  useEffect(() => {
+    if (!pathname.startsWith('/chat') || localStorage.getItem('chatbe_access_token')) {
+      return
+    }
+
+    window.history.replaceState({}, '', '/auth')
+    setPathname('/auth')
+  }, [pathname])
+
   async function handleSubmit(event) {
     event.preventDefault()
     setSubmitted(false)
+    setRegistrationSuccess(false)
     setError('')
     setLoading(true)
 
@@ -42,6 +53,7 @@ function App() {
 
       if (response.access_token) {
         localStorage.setItem('chatbe_access_token', response.access_token)
+        localStorage.setItem('chatbe_user_name', response.name)
       }
 
       if (mode === 'login') {
@@ -50,7 +62,8 @@ function App() {
         return
       }
 
-      setSubmitted(true)
+      setMode('login')
+      setRegistrationSuccess(true)
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -62,15 +75,21 @@ function App() {
   function switchMode(nextMode) {
     setMode(nextMode)
     setSubmitted(false)
+    setRegistrationSuccess(false)
     setError('')
   }
 
   function openAuth() {
-    window.history.pushState({}, '', '/auth')
-    setPathname('/auth')
+    const nextPath = localStorage.getItem('chatbe_access_token') ? '/chat' : '/auth'
+    window.history.pushState({}, '', nextPath)
+    setPathname(nextPath)
   }
 
-  if (pathname === '/chat') {
+  if (pathname.startsWith('/chat')) {
+    if (!localStorage.getItem('chatbe_access_token')) {
+      return null
+    }
+
     return <ChatDashboard />
   }
 
@@ -86,6 +105,7 @@ function App() {
         showPassword={showPassword}
         showConfirmPassword={showConfirmPassword}
         submitted={submitted}
+        registrationSuccess={registrationSuccess}
         loading={loading}
         error={error}
         onModeChange={switchMode}
