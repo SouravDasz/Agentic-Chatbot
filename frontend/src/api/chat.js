@@ -38,6 +38,16 @@ export async function getConversations(token) {
   return parseResponse(response, 'Unable to load conversations')
 }
 
+export async function getChatMessages(token, chatId) {
+  const response = await fetch(`${API_BASE_URL}/chat/${chatId}/messages`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  return parseResponse(response, 'Unable to load conversation messages')
+}
+
 export async function sendMessage(token, chatId, message) {
   const response = await fetch(`${API_BASE_URL}/chat/${chatId}`, {
     method: 'POST',

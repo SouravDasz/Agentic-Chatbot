@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { createChat, getConversations, sendMessage } from '../api/chat'
+import { useEffect, useRef, useState } from 'react'
+import { createChat, getChatMessages, getConversations, sendMessage } from '../api/chat'
 import LogoMark from './LogoMark'
 
 const suggestions = ['Help me brainstorm', 'Explain something', 'Write with me']
@@ -18,10 +18,18 @@ function ChatDashboard() {
     },
   ])
   const [creatingChat, setCreatingChat] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [conversations, setConversations] = useState([])
   const [currentChatId, setCurrentChatId] = useState(getChatIdFromPath)
   const [error, setError] = useState('')
+  const messagesEndRef = useRef(null)
+  const messagesRequestRef = useRef(0)
+  const skipNextMessageFetchRef = useRef(false)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   useEffect(() => {
     const token = localStorage.getItem('chatbe_access_token')
@@ -40,6 +48,45 @@ function ChatDashboard() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  useEffect(() => {
+    if (!currentChatId) {
+      return
+    }
+
+    const token = localStorage.getItem('chatbe_access_token')
+    if (!token) {
+      return
+    }
+
+    if (skipNextMessageFetchRef.current) {
+      skipNextMessageFetchRef.current = false
+      return
+    }
+
+    const requestId = messagesRequestRef.current + 1
+    messagesRequestRef.current = requestId
+    setMessages([])
+    setError('')
+    setLoadingMessages(true)
+
+    getChatMessages(token, currentChatId)
+      .then((loadedMessages) => {
+        if (messagesRequestRef.current === requestId) {
+          setMessages(loadedMessages)
+        }
+      })
+      .catch((requestError) => {
+        if (messagesRequestRef.current === requestId) {
+          setError(requestError.message)
+        }
+      })
+      .finally(() => {
+        if (messagesRequestRef.current === requestId) {
+          setLoadingMessages(false)
+        }
+      })
+  }, [currentChatId])
+
   function handleLogout() {
     localStorage.removeItem('chatbe_access_token')
     localStorage.removeItem('chatbe_user_name')
@@ -52,6 +99,12 @@ function ChatDashboard() {
   const currentConversation = conversations.find(
     (conversation) => String(conversation.id) === currentChatId,
   )
+
+  function handleConversationSelect(event, chatId) {
+    event.preventDefault()
+    setCurrentChatId(String(chatId))
+    window.history.pushState({}, '', `/chat/${chatId}`)
+  }
 
   async function handleNewChat() {
     const token = localStorage.getItem('chatbe_access_token')
@@ -82,14 +135,7 @@ function ChatDashboard() {
     event.preventDefault()
     const trimmedMessage = message.trim()
 
-    const chatId = currentChatId
-
     if (!trimmedMessage || sendingMessage) {
-      return
-    }
-
-    if (!chatId) {
-      setError('Create a conversation before sending a message.')
       return
     }
 
@@ -103,15 +149,24 @@ function ChatDashboard() {
     setSendingMessage(true)
 
     try {
+      let chatId = currentChatId
+
+      if (!chatId) {
+        setCreatingChat(true)
+        const newConversation = await createChat(token)
+        chatId = String(newConversation.id)
+        skipNextMessageFetchRef.current = true
+        setConversations((currentConversations) => [newConversation, ...currentConversations])
+        setCurrentChatId(chatId)
+        window.history.pushState({}, '', `/chat/${chatId}`)
+        setMessages([])
+      }
+
       const savedMessage = await sendMessage(token, chatId, trimmedMessage)
       setMessages((currentMessages) => [
         ...currentMessages,
-        savedMessage,
-        {
-          id: `${savedMessage.id}-assistant`,
-          role: 'assistant',
-          content: 'Thanks for sharing that. I’m ready to help you think it through.',
-        },
+        savedMessage.user_message,
+        savedMessage.assistant_message,
       ])
       setMessage('')
 
@@ -125,6 +180,7 @@ function ChatDashboard() {
       setError(requestError.message)
     } finally {
       setSendingMessage(false)
+      setCreatingChat(false)
     }
   }
 
@@ -158,7 +214,7 @@ function ChatDashboard() {
                 className={`block rounded-lg px-3 py-2 no-underline ${String(conversation.id) === currentChatId ? 'bg-[#28453e] text-white' : 'text-[#b7c8c0] hover:bg-[#28453e] hover:text-white'}`}
                 href={`/chat/${conversation.id}`}
                 key={conversation.id}
-                onClick={() => setCurrentChatId(String(conversation.id))}
+                onClick={(event) => handleConversationSelect(event, conversation.id)}
               >
                 <span className="block truncate text-sm">{conversation.title}</span>
                 <span className="block text-[10px] text-[#83a096]">Chat #{conversation.id}</span>
@@ -202,13 +258,16 @@ function ChatDashboard() {
           </div>
 
           <div className="chat-scrollbar chat-scrollbar-light min-h-0 flex-1 space-y-5 overflow-y-auto pb-5">
-            {messages.map((currentMessage) => (
+            {loadingMessages ? (
+              <p className="m-0 text-sm text-[#82908c]">Loading messages...</p>
+            ) : messages.map((currentMessage) => (
               <div className={`flex ${currentMessage.role === 'user' ? 'justify-end' : 'justify-start'}`} key={currentMessage.id}>
                 <p className={`m-0 max-w-[min(85%,560px)] rounded-2xl px-4 py-3 text-sm leading-6 ${currentMessage.role === 'user' ? 'rounded-br-sm bg-[#f7ede4] text-[#536660]' : 'rounded-bl-sm bg-white text-[#536660] shadow-[0_4px_16px_rgba(24,51,46,.05)]'}`}>
                   {currentMessage.content}
                 </p>
               </div>
             ))}
+            <div ref={messagesEndRef} />
           </div>
 
           <div>

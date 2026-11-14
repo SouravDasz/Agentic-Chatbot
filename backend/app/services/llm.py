@@ -10,4 +10,10 @@ title_generation_llm=ChatGroq(
     temperature=0
 )
 
+genrel_llm=ChatGroq(
+    model="openai/gpt-oss-120b",
+    api_key=os.getenv("GROQ_API_KEY"),
+    temperature=0.4
+)
+
 
