@@ -20,6 +20,8 @@ function ChatDashboard() {
   const [creatingChat, setCreatingChat] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [streamingMessageId, setStreamingMessageId] = useState(null)
+  const [firstTokenReceived, setFirstTokenReceived] = useState(false)
   const [conversations, setConversations] = useState([])
   const [currentChatId, setCurrentChatId] = useState(getChatIdFromPath)
   const [error, setError] = useState('')
@@ -147,6 +149,7 @@ function ChatDashboard() {
 
     setError('')
     setSendingMessage(true)
+    let streamingPlaceholderId = null
 
     try {
       let chatId = currentChatId
@@ -162,12 +165,58 @@ function ChatDashboard() {
         setMessages([])
       }
 
-      const savedMessage = await sendMessage(token, chatId, trimmedMessage)
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        savedMessage.user_message,
-        savedMessage.assistant_message,
-      ])
+      const placeholderId = `streaming-${Date.now()}`
+      streamingPlaceholderId = placeholderId
+      setStreamingMessageId(placeholderId)
+      setFirstTokenReceived(false)
+
+      await sendMessage(token, chatId, trimmedMessage, (eventName, data) => {
+        if (eventName === 'user_message') {
+          setMessages((currentMessages) => [...currentMessages, data])
+          setMessage('')
+        }
+
+        if (eventName === 'token') {
+          setFirstTokenReceived(true)
+          setMessages((currentMessages) => {
+            const placeholderExists = currentMessages.some(
+              (currentMessage) => currentMessage.id === placeholderId,
+            )
+
+            if (!placeholderExists) {
+              return [
+                ...currentMessages,
+                { id: placeholderId, role: 'assistant', content: data.content },
+              ]
+            }
+
+            return currentMessages.map((currentMessage) => (
+              currentMessage.id === placeholderId
+                ? { ...currentMessage, content: currentMessage.content + data.content }
+                : currentMessage
+            ))
+          })
+        }
+
+        if (eventName === 'done') {
+          setMessages((currentMessages) => {
+            const placeholderExists = currentMessages.some(
+              (currentMessage) => currentMessage.id === placeholderId,
+            )
+            if (!placeholderExists) {
+              return [...currentMessages, data.assistant_message]
+            }
+            return currentMessages.map((currentMessage) => (
+              currentMessage.id === placeholderId
+                ? data.assistant_message
+                : currentMessage
+            ))
+          })
+          setStreamingMessageId(null)
+          setFirstTokenReceived(true)
+          setSendingMessage(false)
+        }
+      })
       setMessage('')
 
       try {
@@ -177,6 +226,13 @@ function ChatDashboard() {
         setError(refreshError.message)
       }
     } catch (requestError) {
+      setMessages((currentMessages) => (
+        streamingPlaceholderId
+          ? currentMessages.filter((currentMessage) => currentMessage.id !== streamingPlaceholderId)
+          : currentMessages
+      ))
+      setStreamingMessageId(null)
+      setFirstTokenReceived(false)
       setError(requestError.message)
     } finally {
       setSendingMessage(false)
@@ -262,11 +318,18 @@ function ChatDashboard() {
               <p className="m-0 text-sm text-[#82908c]">Loading messages...</p>
             ) : messages.map((currentMessage) => (
               <div className={`flex ${currentMessage.role === 'user' ? 'justify-end' : 'justify-start'}`} key={currentMessage.id}>
-                <p className={`m-0 max-w-[min(85%,560px)] rounded-2xl px-4 py-3 text-sm leading-6 ${currentMessage.role === 'user' ? 'rounded-br-sm bg-[#f7ede4] text-[#536660]' : 'rounded-bl-sm bg-white text-[#536660] shadow-[0_4px_16px_rgba(24,51,46,.05)]'}`}>
+                <p className={`m-0 max-w-[min(85%,560px)] rounded-2xl px-4 py-3 text-sm leading-6 ${currentMessage.role === 'user' ? 'rounded-br-sm bg-white text-[#536660] shadow-[0_4px_16px_rgba(24,51,46,.05)]' : 'rounded-bl-sm bg-[#dceee7] text-[#18332e] shadow-[0_4px_16px_rgba(24,51,46,.08)]'}`}>
                   {currentMessage.content}
                 </p>
               </div>
             ))}
+            {sendingMessage && !firstTokenReceived && (
+              <div className="flex justify-start" aria-label="Assistant is responding">
+                <p className="m-0 max-w-[min(85%,560px)] rounded-2xl rounded-bl-sm bg-[#dceee7] px-4 py-3 text-sm leading-6 text-[#18332e] shadow-[0_4px_16px_rgba(24,51,46,.08)]">
+                  Thinking...
+                </p>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 

@@ -8,16 +8,21 @@ from app.routers.auth import router as auth_router
 from app.database import Base, engine
 from app.models.user import User
 from app.routers.chat import router as chat_router
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+import app.agents.chat_graph as chat_graph_module
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Runs when the application starts
     Base.metadata.create_all(bind=engine)
 
-    yield
+    async with AsyncSqliteSaver.from_conn_string("chat_history.db") as checkpoint:
+        await checkpoint.setup()
+        chat_graph_module.graph = chat_graph_module.build_graph(checkpointer=checkpoint)
+        yield
 
-    # Runs when the application shuts down
-    engine.dispose()
+        # Runs when the application shuts down
+        engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan)

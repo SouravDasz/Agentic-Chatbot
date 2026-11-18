@@ -1,6 +1,9 @@
+import json
+
 from fastapi import APIRouter,Depends,HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from langchain_core.messages import HumanMessage,AIMessage
+from langchain_core.messages import HumanMessage,AIMessageChunk
 
 
 
@@ -12,11 +15,14 @@ from app.core.dependencies import get_current_user
 from app.schemas.message import MessageRequest,MessageResponse,ChatResponse
 from app.models.message import Message
 from app.services.chat_service import title_generator
-from app.agents.chat_graph import graph
+import app.agents.chat_graph as chat_graph_module
 
 
 
 router=APIRouter(tags=["conversations"])
+
+def sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 @router.get("/conversations",response_model=list[ConversationResponse])
 def get_conversations(
@@ -46,8 +52,8 @@ def create_chat(
     db.refresh(new_chat)
     return new_chat
 
-@router.post("/chat/{chat_id}", response_model=ChatResponse)
-def send_message(
+@router.post("/chat/{chat_id}")
+async def send_message(
     chat_id: int,
     message_data: MessageRequest,
     db: Session = Depends(get_db),
@@ -95,26 +101,69 @@ def send_message(
         }
     }
 
-    response=graph.invoke(
-        {"messages":[HumanMessage(content=message_data.message)]},config=config
+    async def generate():
+        assistant_content = []
+
+        yield sse_event("user_message", {
+            "id": user_message.id,
+            "role": user_message.role,
+            "content": user_message.content,
+            "created_at": user_message.created_at.isoformat(),
+        })
+
+        try:
+            async for chunk, _metadata in chat_graph_module.graph.astream(
+                {"messages": [HumanMessage(content=message_data.message)]},
+                config=config,
+                stream_mode="messages",
+            ):
+                if not isinstance(chunk, AIMessageChunk):
+                    continue
+
+                text = chunk.content
+                if isinstance(text, list):
+                    text = "".join(
+                        block.get("text", "")
+                        if isinstance(block, dict)
+                        else str(block)
+                        for block in text
+                    )
+                if not isinstance(text, str) or not text:
+                    continue
+
+                assistant_content.append(text)
+                yield sse_event("token", {"content": text})
+
+            assistant_message = Message(
+                conversation_id=chat_id,
+                role="assistant",
+                content="".join(assistant_content),
+            )
+            db.add(assistant_message)
+            db.commit()
+            db.refresh(assistant_message)
+
+            yield sse_event("done", {
+                "assistant_message": {
+                    "id": assistant_message.id,
+                    "role": assistant_message.role,
+                    "content": assistant_message.content,
+                    "created_at": assistant_message.created_at.isoformat(),
+                }
+            })
+        except Exception as error:
+            db.rollback()
+            yield sse_event("error", {"detail": str(error)})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
-
-    ai_response=response["messages"][-1].content
-
-    assistant_message = Message(
-    conversation_id=chat_id,
-    role="assistant",
-    content=ai_response
-    )
-    db.add(assistant_message)
-    db.commit()
-    db.refresh(assistant_message)
-
-
-    return {
-    "user_message": user_message,
-    "assistant_message": assistant_message
-}
 
 
 
